@@ -10,10 +10,10 @@ where your will need something like this:
   const foo = Foo({value$: bar.value$, DOM})
   const bar = Bar({HTTP, prop$: foo.prop$})
 ```
-This (note that **`bar`** is **used before declared** in the code).
+(Here we want to use stream `bar.value$` before it exists)
 
 `cycle-circular` will allow to do this by creating 
-safe from memory leaks proxy: 
+safe from memory leaks proxy stream that will imitate `bar.value$`: 
 
 ```js
   import proxy from 'cycle-circular/rx'  
@@ -25,7 +25,7 @@ safe from memory leaks proxy:
   value$.proxy(bar.value$)
 ```
 
-if you need to apply some operators to proxy stream:
+if you need to apply some operators to proxied stream:
 ```js
   import proxy from 'cycle-circular/xstream'  
   ...
@@ -38,14 +38,14 @@ if you need to apply some operators to proxy stream:
 
 can do it also this way:
 ```js
-  import proxy from 'cycle-circular/rxjs'  
+  import circular from 'cycle-circular/rxjs'  
   ...
   
-  const {proxy: valueProxy} = proxy()
-  const value$ = valueProxy().startWith(1)
+  const repeatValue = circular().proxy
+  const value$ = repeatValue().startWith(1)
   const foo = Foo({value$, DOM})
   const bar = Bar({HTTP, prop$: foo.prop$})
-  valueProxy(bar.value$)
+  repeatValue(bar.value$)
 ```
 
 ## Install
