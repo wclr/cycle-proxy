@@ -3,188 +3,75 @@ import rxProxy from '../rx'
 import rxjsProxy from '../rxjs'
 import xsProxy from '../xstream'
 import mostProxy from '../most'
-import rxRun from '@cycle/rx-run'
-import rxjsRun from '@cycle/rxjs-run'
-import xsRun from '@cycle/xstream-run'
-import mostRun from '@cycle/most-run'
 import Rx from 'rx'
 import Rxjs from 'rxjs'
 import most from 'most'
 import xs from 'xstream'
-
+import R from 'ramda'
 import test from 'tape'
+import {sample} from '@most/sample'
 
-const Double = (value$, events$) => {
-  return {value$: value$.map(x => x*2).sample(events$)}
-}
+const timeScale = 10
 
-const makeRxTest = (name, Cycle, proxy, interval) => {
-  const Double = (value$, events$) => {
-    return {value$: value$.map(x => x*2).zip(events$, _ => _)}
-  }
-  test(`cyclic proxy (${name})`, (t) => {
-    let countEmitted = 0
-    let countListened = 0
-    let lastVal
-    let tick = 50
-
-    const Main = ({events$}) => {
-      const value$ = proxy(_ => _
-        .startWith(1)
-        .do(() => countEmitted++)
-      )
-      const double = Double(value$, events$)
-      value$.proxy(double.value$)
-      return {
-        value$: value$
-      }
-    }
-
-    const {run} = Cycle(Main, {
-      events$: () => {
-        let disposed = false
-        const events$ = interval(tick).take(4)
-        events$.dispose = function(){
-          disposed = true
-        }
-        return events$
-      },
-      value$: (value$) => {
-        return value$.forEach(v => {
-          countListened++
-          lastVal = v
-        })
-      }
-    })
-    const dispose = run()
-    setTimeout(() => {
-      dispose()
-      setTimeout(() => {
-        t.is(lastVal, 16, 'last value is correct')
-        t.is(countEmitted, 5, 'countEmitted correct')
-        t.is(countListened, 5, 'countListened correct')
-        t.end()
-      }, tick*10)
-    }, tick*5)
-
-})
-}
-
-makeRxTest('rx', rxRun, rxProxy, Rx.Observable.interval)
-makeRxTest('rxjs', rxjsRun, rxjsProxy, Rxjs.Observable.interval)
-
-test('cyclic proxy (xstream)', (t) => {
-  const Double = (value$, events$) => {
-    //return {value$: value$.map(x => x*2).sample(events$)}
-    return {value$: value$.map(x => events$.mapTo(x*2)).flatten()}
-  }
-
-  let countEmitted = 0
-  let countListened = 0
-  let lastVal
-  let tick = 50
-
-  const Main = ({events$}) => {
-    const value$ = xsProxy(_ => _
-      .startWith(1)
-      .debug(() => countEmitted++)
-      .debug((x) => console.log(x))
-    )
-    const double = Double(value$, events$)
-    value$.proxy(double.value$)
-    return {
-      value$: value$
-    }
-  }
-
-  const {run} = xsRun(Main, {
-    events$: () => {
-      let disposed = false
-      const events$ = xs.periodic(tick).take(4)
-      events$.dispose = function(){
-        disposed = true
-      }
-      return events$
-    },
-    value$: (value$) => {
-      value$.addListener({
-        next: v => {
-          console.log('value', v)
-          countListened++
-        },
-        error: () => {},
-        complete: () => {}
-      })
-      return {}
-    }
-  })
-  const dispose = run()
+const checkProcessed = (t, dispose, processed, processedEmitted) => {
   setTimeout(() => {
     dispose()
-    setTimeout(() => {
-      t.is(countEmitted, 5, 'countListened')
-      t.is(countListened + 1, countEmitted)
-      t.end()
-    }, tick*5)
-  }, tick*6)
-})
-
-test.skip('cyclic proxy (most)', (t) => {
-  const Double = (value$, events$) => {
-    //return {value$: value$.map(x => x*2).sample(events$)}
-    return {value$: value$.map(x => events$.map(_ => x*2)).flatMap()}
-  }
-
-  let countEmitted = 0
-  let countListened = 0
-  let lastVal
-  let tick = 50
-
-  const Main = ({events$}) => {
-
-    const value$ = mostProxy(_ => _
-      .startWith(1)
-      .map((x) => {
-        countEmitted++
-        return x
-      })
-      //.debug((x) => console.log(x))
-    )
-    //console.log('events$', value$)
-    const double = Double(value$, events$)
-    value$.proxy(double.value$)
-    return {
-      value$: value$
+    if (R.equals(processed, [ 1, 2, 3, 5 ])){
+      t.pass('processed is correct')
+    } else {
+      console.log('processed', processed)
+      t.fail('processed is correct')
     }
-  }
-
-  const {run} = mostRun(Main, {
-    events$: () => {
-      let disposed = false
-      const events$ = most.periodic(tick).take(4)
-      events$.dispose = function(){
-        disposed = true
+    setTimeout(() => {
+      if (R.equals(processedEmitted, [ 1, 2, 3, 5 ])){
+        t.pass('no leak detected')
+      } else {
+        console.log('processedEmitted', processedEmitted)
+        t.fail('no leak detected')
       }
-      return events$
-    },
-    value$: (value$) => {
-      value$.subscribe({
-        next: v => {
-          console.log('value', v)
-          countListened++
-        },
-        error: () => {},
-        complete: () => {}
-      })
-      return {}
-    }
-  })
-  const dispose = run()
-  setTimeout(() => {
-    //dispose()
-    setTimeout(() => {
-      t.is(countListened + 1, countEmitted)
       t.end()
-    }, tick*5)
-  }, tick*6)
-})
+    }, 100*timeScale)
+  }, 200*timeScale)
+}
+
+const makeRxTest = (name, Rx, proxy) => {
+  let O = Rx.Observable
+  let processed = []
+  let processedEmitted = []
+  let items = [1, 2, 3, 2, 5, 6, 7, 8, 9, 10]
+  test(`cyclic proxy (${name})`, (t) => {
+
+    let item$ = O.interval(10*timeScale).map(i => items[i] || -1)
+
+    let queueMimic$ = proxy()
+
+    let passed$ = item$.withLatestFrom(queueMimic$.startWith([]), (item, queue) => {
+      return (queue.indexOf(item) < 0) ? item : null
+    }).filter(_ => _)
+
+    let processed$ = passed$
+      .zip(O.interval(40*timeScale), _ => _)
+      .do(x => processedEmitted.push(x))
+      .share() // catch leak
+
+
+    let q$ = O.merge(passed$, processed$).scan((q, item) => {
+      var index = q.indexOf(item)
+      return (index < 0) ? R.append(item, q) : R.remove(index, 1, q)
+    }, [])
+      .share()
+      .let(queueMimic$.proxy)
+
+    let sub = O.merge(processed$, q$.skip())
+      .subscribe(
+      x => {
+        processed.push(x)
+      }
+    )
+    let dispose = (sub.dispose || sub.unsubscribe).bind(sub)
+    checkProcessed(t, dispose, processed, processedEmitted)
+  })
+}
+
+makeRxTest('rx', Rx, rxProxy)
+makeRxTest('rxjs', Rxjs, rxjsProxy)
