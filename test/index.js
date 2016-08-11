@@ -1,4 +1,4 @@
-import {equal} from 'assert'
+import test from 'tape'
 import rxProxy from '../rx'
 import rxjsProxy from '../rxjs'
 import xsProxy from '../xstream'
@@ -8,40 +8,51 @@ import Rxjs from 'rxjs'
 import most from 'most'
 import xs from 'xstream'
 import R from 'ramda'
-import test from 'tape'
-import {sample} from '@most/sample'
+import xsDelay from 'xstream/extra/delay'
 
-const timeScale = 10
+const timeScale = 1
+const processInterval = 40*timeScale
+const emitInterval = 10*timeScale
+const correctProcessed = [ 1, 2, 3, 5 ]
 
-const checkProcessed = (t, dispose, processed, processedEmitted) => {
+const testProcessed = (t, dispose, processed, processedEmitted) => {
+  if (processed.length < correctProcessed.length){
+    return
+  }
+  dispose()
+  if (R.equals(processed, correctProcessed)){
+    t.pass('processed is correct')
+  } else {
+    console.log('processed', processed)
+    t.fail('processed is correct')
+  }
   setTimeout(() => {
-    dispose()
-    if (R.equals(processed, [ 1, 2, 3, 5 ])){
-      t.pass('processed is correct')
+    if (R.equals(processedEmitted, correctProcessed)){
+      t.pass('no leak detected')
     } else {
-      console.log('processed', processed)
-      t.fail('processed is correct')
+      console.log('processedEmitted', processedEmitted)
+      t.fail('no leak detected')
     }
-    setTimeout(() => {
-      if (R.equals(processedEmitted, [ 1, 2, 3, 5 ])){
-        t.pass('no leak detected')
-      } else {
-        console.log('processedEmitted', processedEmitted)
-        t.fail('no leak detected')
-      }
-      t.end()
-    }, 100*timeScale)
-  }, 200*timeScale)
+    t.end()
+  }, processInterval*2)
 }
+const items = [1, 2, 3, 2, 5, 6, 7, 8, 9, 10]
+
+
+const toggleInQueue = (queue, item) => {
+  var index = queue.indexOf(item)
+  return ((index < 0) ? R.append(item) : R.remove(index, 1))(queue)
+}
+
+let mapLog = (message) => (x) => !console.log(message, x) && x
 
 const makeRxTest = (name, Rx, proxy) => {
   let O = Rx.Observable
   let processed = []
   let processedEmitted = []
-  let items = [1, 2, 3, 2, 5, 6, 7, 8, 9, 10]
   test(`cyclic proxy (${name})`, (t) => {
-
-    let item$ = O.interval(10*timeScale).map(i => items[i] || -1)
+    let item$ = O.interval(emitInterval)
+      .map(i => items[i] || -1)
 
     let queueMimic$ = proxy()
 
@@ -49,29 +60,166 @@ const makeRxTest = (name, Rx, proxy) => {
       return (queue.indexOf(item) < 0) ? item : null
     }).filter(_ => _)
 
+    let catchPossibleLeak = (x) => processedEmitted.push(x)
+
     let processed$ = passed$
-      .zip(O.interval(40*timeScale), _ => _)
-      .do(x => processedEmitted.push(x))
-      .share() // catch leak
+      .delay(processInterval)
+      .do(catchPossibleLeak)
+      //.do(mapLog('processed'))
+      .share()
 
-
-    let q$ = O.merge(passed$, processed$).scan((q, item) => {
-      var index = q.indexOf(item)
-      return (index < 0) ? R.append(item, q) : R.remove(index, 1, q)
-    }, [])
+    let queue$ = O.merge(passed$, processed$).scan(toggleInQueue, [])
       .share()
       .let(queueMimic$.proxy)
 
-    let sub = O.merge(processed$, q$.skip())
-      .subscribe(
-      x => {
+    let sub = O.merge(processed$, queue$.skip())
+      .subscribe(x => {
         processed.push(x)
+        let dispose = (sub.dispose || sub.unsubscribe).bind(sub)
+        testProcessed(t, dispose, processed, processedEmitted)
       }
     )
-    let dispose = (sub.dispose || sub.unsubscribe).bind(sub)
-    checkProcessed(t, dispose, processed, processedEmitted)
   })
 }
 
 makeRxTest('rx', Rx, rxProxy)
 makeRxTest('rxjs', Rxjs, rxjsProxy)
+
+test('xstream - imitate', (t) => {
+  let withLatestFrom = (from$, mapFn = (s,f) => [s, f]) =>
+    (stream$) => from$.map(f =>
+      stream$.map(s => mapFn(s, f))
+    ).flatten()
+
+  let processed = []
+  let processedEmitted = []
+
+  let item$ = xs.periodic(10*timeScale).map(i => items[i] || -1)
+
+  let toggleMimic$ = xs.create()
+
+  const passQueue = (item, queue) => {
+    return (queue.indexOf(item) < 0) ? item : null
+  }
+
+  let queue$ = toggleMimic$
+    .fold(toggleInQueue, [])
+
+  let passed$ = item$.compose(
+    withLatestFrom(queue$, passQueue)
+  ).filter(_ => _)
+
+  let catchPossibleLeak = (x) => processedEmitted.push(x) && x
+
+  let processed$ = passed$
+    .compose(xsDelay(processInterval))
+    .map(catchPossibleLeak)
+    //.map(mapLog('processed$'))
+
+  let toggle$ = xs.merge(passed$, processed$)
+
+  toggleMimic$.imitate(toggle$)
+
+  let listener = {
+    next: (x) => {
+      processed.push(x)
+      let dispose = () => {
+        processed$.removeListener(listener)
+      }
+      testProcessed(t, dispose, processed, processedEmitted)
+    },
+    error: () => {},
+    complete: () => {}
+  }
+
+  processed$.addListener(listener)
+})
+
+let withLatestFrom = (from$, mapFn = (s,f) => [s, f]) =>
+  (stream$) => from$.map(f =>
+    stream$.map(s => mapFn(s, f))
+  ).flatten()
+
+test('xstream - proxy', (t) => {
+  let processed = []
+  let processedEmitted = []
+
+  let item$ = xs.periodic(10*timeScale).map(i => items[i] || -1)
+
+  let queueMimic$ = xsProxy()
+
+  const passQueue = (item, queue) => {
+    return (queue.indexOf(item) < 0) ? item : null
+  }
+
+  let passed$ = item$.compose(
+    withLatestFrom(queueMimic$.startWith([]), passQueue)
+  ).filter(_ => _)
+
+  let catchPossibleLeak = (x) => processedEmitted.push(x) && x
+
+  let processed$ = passed$
+    .compose(xsDelay(processInterval))
+    .map(catchPossibleLeak)
+
+  let queue$ = xs.merge(passed$, processed$)
+    .fold(toggleInQueue, [])
+    .compose(queueMimic$.proxy)
+
+  let listener = {
+    next: (x) => {
+      processed.push(x)
+      let dispose = () => {
+        sink$.removeListener(listener)
+      }
+      testProcessed(t, dispose, processed, processedEmitted)
+    },
+    error: () => {},
+    complete: () => {}
+  }
+
+  let sink$ = xs.merge(processed$, queue$.drop())
+  sink$.addListener(listener)
+})
+
+test.skip('most - proxy', (t) => {
+  let processed = []
+  let processedEmitted = []
+
+  let item$ = xs.periodic(10*timeScale).map(i => items[i] || -1)
+
+  let queueMimic$ = mostProxy()
+
+  const passQueue = (item, queue) => {
+    return (queue.indexOf(item) < 0) ? item : null
+  }
+
+  let passed$ = item$.compose(
+    withLatestFrom(queueMimic$.startWith([]), passQueue)
+  ).filter(_ => _)
+
+  let catchPossibleLeak = (x) => processedEmitted.push(x) && x
+
+  let processed$ = passed$
+    .compose(xsDelay(processInterval))
+    .map(catchPossibleLeak)
+
+  let queue$ = xs.merge(passed$, processed$)
+    .fold(toggleInQueue, [])
+    .compose(queueMimic$.proxy)
+
+  let listener = {
+    next: (x) => {
+      processed.push(x)
+      let dispose = () => {
+        sink$.removeListener(listener)
+      }
+      testProcessed(t, dispose, processed, processedEmitted)
+    },
+    error: () => {},
+    complete: () => {}
+  }
+
+  let sink$ = xs.merge(processed$, queue$.drop())
+  sink$.addListener(listener)
+})
