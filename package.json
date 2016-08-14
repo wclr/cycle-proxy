@@ -1,13 +1,16 @@
 {
-  "name": "cycle-circular",
-  "version": "0.2.0",
-  "description": "Cycle.js helper for circular dependencies.",
+  "name": "cycle-proxy",
+  "version": "1.0.0",
+  "description": "Helper for handling circular stream dependencies in Cycle.js.",
   "author": "whitecolor",
+  "repository": "github:whitecolor/cycle-proxy",
   "license": "ISC",
   "main": "lib/index.js",
   "keywords": [
     "rx",
-    "dx",
+    "rxjs",
+    "xstream",
+    "mostjs",
     "cyclejs"
   ],
   "scripts": {
@@ -16,10 +19,11 @@
     "build-watch": "babel src -w -d lib",
     "test": "node -r babel-register test",
     "test-watch": "node-dev --respawn -r babel-register test",
-    "prepublish": "npm run clean && npm run build"
+    "prepublish": "npm run clean && npm run build",
+    "vmd-readme": "vmd README.md"
   },
   "devDependencies": {
-    "@cycle/most-adapter": "^2.0.1",
+    "@cycle/most-adapter": "^4.0.1",
     "@cycle/most-run": "^2.0.0",
     "@cycle/rx-adapter": "^3.0.0",
     "@cycle/rx-run": "^7.0.0-rc7",

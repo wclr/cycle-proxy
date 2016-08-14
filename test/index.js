@@ -6,6 +6,7 @@ import mostProxy from '../most'
 import Rx from 'rx'
 import Rxjs from 'rxjs'
 import most from 'most'
+import {sample} from '@most/sample'
 import xs from 'xstream'
 import R from 'ramda'
 import xsDelay from 'xstream/extra/delay'
@@ -60,6 +61,7 @@ const makeRxTest = (name, Rx, proxy) => {
       return (queue.indexOf(item) < 0) ? item : null
     }).filter(_ => _)
 
+    //let catchPossibleLeak = (x) => processedEmitted.push(x)
     let catchPossibleLeak = (x) => processedEmitted.push(x)
 
     let processed$ = passed$
@@ -86,15 +88,11 @@ makeRxTest('rx', Rx, rxProxy)
 makeRxTest('rxjs', Rxjs, rxjsProxy)
 
 test('xstream - imitate', (t) => {
-  let withLatestFrom = (from$, mapFn = (s,f) => [s, f]) =>
-    (stream$) => from$.map(f =>
-      stream$.map(s => mapFn(s, f))
-    ).flatten()
-
   let processed = []
   let processedEmitted = []
 
-  let item$ = xs.periodic(10*timeScale).map(i => items[i] || -1)
+  let item$ = xs.periodic(10*timeScale)
+    .map(i => items[i] || -1)
 
   let toggleMimic$ = xs.create()
 
@@ -114,7 +112,6 @@ test('xstream - imitate', (t) => {
   let processed$ = passed$
     .compose(xsDelay(processInterval))
     .map(catchPossibleLeak)
-    //.map(mapLog('processed$'))
 
   let toggle$ = xs.merge(passed$, processed$)
 
@@ -186,7 +183,10 @@ test.skip('most - proxy', (t) => {
   let processed = []
   let processedEmitted = []
 
-  let item$ = xs.periodic(10*timeScale).map(i => items[i] || -1)
+  let item$ = most.periodic(10*timeScale)
+    .scan(x => x + 1, -2)
+    .map(i => items[i] || -1)
+    .skip(2)
 
   let queueMimic$ = mostProxy()
 
@@ -194,32 +194,38 @@ test.skip('most - proxy', (t) => {
     return (queue.indexOf(item) < 0) ? item : null
   }
 
-  let passed$ = item$.compose(
-    withLatestFrom(queueMimic$.startWith([]), passQueue)
+  let passed$ = sample(passQueue,
+    item$, queueMimic$.startWith([])
   ).filter(_ => _)
 
-  let catchPossibleLeak = (x) => processedEmitted.push(x) && x
+  //let catchPossibleLeak = (x) => processedEmitted.push(x) && x
+
+  let catchPossibleLeak = (x) => {
+    console.log('x', x)
+    return processedEmitted.push(x) && x
+  }
 
   let processed$ = passed$
-    .compose(xsDelay(processInterval))
+    .delay(processInterval)
     .map(catchPossibleLeak)
+    .multicast()
 
-  let queue$ = xs.merge(passed$, processed$)
-    .fold(toggleInQueue, [])
-    .compose(queueMimic$.proxy)
+  let queue$ = most.merge(passed$, processed$)
+    .scan(toggleInQueue, []).multicast()
+    .thru(queueMimic$.proxy)
 
   let listener = {
     next: (x) => {
       processed.push(x)
-      let dispose = () => {
-        sink$.removeListener(listener)
-      }
       testProcessed(t, dispose, processed, processedEmitted)
     },
     error: () => {},
     complete: () => {}
   }
 
-  let sink$ = xs.merge(processed$, queue$.drop())
-  sink$.addListener(listener)
+  let sink$ = most.merge(processed$, queue$.chain(() => most.empty()))
+  let subscription = sink$.subscribe(listener)
+  let dispose = () => {
+    subscription.unsubscribe()
+  }
 })
