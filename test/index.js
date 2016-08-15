@@ -28,7 +28,7 @@ const testProcessed = (t, dispose, processed, processedEmitted) => {
     t.fail('processed is correct')
   }
   setTimeout(() => {
-    if (R.equals(processedEmitted, correctProcessed)){
+    if (processedEmitted.length <= processed.length + 1){
       t.pass('no leak detected')
     } else {
       console.log('processedEmitted', processedEmitted)
@@ -91,7 +91,7 @@ test('xstream - imitate', (t) => {
   let processed = []
   let processedEmitted = []
 
-  let item$ = xs.periodic(10*timeScale)
+  let item$ = xs.periodic(emitInterval)
     .map(i => items[i] || -1)
 
   let toggleMimic$ = xs.create()
@@ -141,7 +141,7 @@ test('xstream - proxy', (t) => {
   let processed = []
   let processedEmitted = []
 
-  let item$ = xs.periodic(10*timeScale).map(i => items[i] || -1)
+  let item$ = xs.periodic(emitInterval).map(i => items[i] || -1)
 
   let queueMimic$ = xsProxy()
 
@@ -183,7 +183,7 @@ test.skip('most - proxy', (t) => {
   let processed = []
   let processedEmitted = []
 
-  let item$ = most.periodic(10*timeScale)
+  let item$ = most.periodic(emitInterval)
     .scan(x => x + 1, -2)
     .map(i => items[i] || -1)
     .skip(2)

@@ -1,6 +1,6 @@
-# cycle-circular
+# cycle-proxy
 
-> Create imitating proxy inside [cycle.js](http://cycle.js.org) apps.
+> Create imitating proxy in your [cycle.js](http://cycle.js.org) apps.
 
 This helper allows to create a stream which can **attach to other stream**
 and emmit target stream values. Like [`imitate`](https://github.com/staltz/xstream#imitate) 
@@ -24,7 +24,7 @@ give a birth to next action, and so on.
   const bar = Bar({HTTP, prop$: foo.prop$})
 ```
 
-#### Usage
+### Usage
 
 ```js
   // import proxy for particular stream library
@@ -47,7 +47,7 @@ and proxy stream stops emitting values.
 - Because we create internal subscription to target stream dependent on external one (which is 
 managed managed externally by your code) we are able to avoid potential memory leak.
 
-####  Difference from [`xstream`'s `imitate`](https://github.com/staltz/xstream#imitate) 
+###  Difference from [`xstream`'s `imitate`](https://github.com/staltz/xstream#imitate) 
 
 So to launch this proxied stream it needs to be subscribed externally. 
 This means that such code won't work:
@@ -70,3 +70,6 @@ This module **is more general purpose**.
 If you are using `xstream` it is recommended to use `imitate`. But 
 this `proxy` also supports attaching to any kind of streams 
 (even `MemoryStreams` of `xstream`, which `imitate` does not support).
+
+## Licence
+ISC
