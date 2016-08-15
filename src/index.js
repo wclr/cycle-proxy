@@ -8,44 +8,30 @@ export const makeProxy = (adapter) => {
     let targetStream
     let refs = 0
     const proxyStream = subject.stream
-    const disposeSubscriptionToTarget = () => {
-      if (proxyDispose) {
-        proxyDispose()
-      }
-    }
     proxyStream.proxy = (target) => {
-      const subscribeToTarget = () => {
-        if (proxyDispose) return
-        proxyDispose = adapter.streamSubscribe(
-          targetStream, subject.observer
-        )
+      if (!target || !adapter.isValidStream(target)){
+        throw new Error('You should provide a valid target stream to proxy')
       }
-      if (target){
-        if (targetStream){
-          throw new Error('You may provide only one target stream to proxy')
-        }
-        if (!adapter.isValidStream(target)){
-          throw new Error('You should provide a valid target stream to proxy')
-        }
-        targetStream = composeFn(target)
-        let refs = 0
-        return adapter.adapt({}, (_, observer) => {
-          let dispose = adapter.streamSubscribe(target, observer)
-          if (refs++ === 0){
-            subscribeToTarget()
-          }
-          return () => {
-            dispose()
-            if (--refs === 0){
-              disposeSubscriptionToTarget()
-            }
-          }
-        })
-      } else {
-        return proxyStream
+      if (targetStream){
+        throw new Error('You may provide only one target stream to proxy')
       }
+      targetStream = composeFn(target)
+      let refs = 0
+      return adapter.adapt({}, (_, observer) => {
+        let dispose = adapter.streamSubscribe(target, observer)
+        if (refs++ === 0){
+          proxyDispose = proxyDispose || adapter.streamSubscribe(
+            targetStream, subject.observer
+          )
+        }
+        return () => {
+          dispose()
+          if (--refs === 0){
+            proxyDispose && proxyDispose()
+          }
+        }
+      })
     }
-
     return proxyStream
   }
 }
