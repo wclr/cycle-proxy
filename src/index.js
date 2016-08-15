@@ -20,14 +20,14 @@ export const makeProxy = (adapter) => {
       return adapter.adapt({}, (_, observer) => {
         let dispose = adapter.streamSubscribe(target, observer)
         if (refs++ === 0){
-          proxyDispose = proxyDispose || adapter.streamSubscribe(
+          proxyDispose = adapter.streamSubscribe(
             targetStream, subject.observer
           )
         }
         return () => {
           dispose()
           if (--refs === 0){
-            proxyDispose && proxyDispose()
+            proxyDispose()
           }
         }
       })

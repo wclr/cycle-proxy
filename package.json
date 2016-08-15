@@ -1,7 +1,7 @@
 {
   "name": "cycle-proxy",
   "version": "1.0.0",
-  "description": "Helper for handling circular stream dependencies in Cycle.js.",
+  "description": "Handle circular stream dependencies in Cycle.js.",
   "author": "whitecolor",
   "repository": "github:whitecolor/cycle-proxy",
   "license": "ISC",
