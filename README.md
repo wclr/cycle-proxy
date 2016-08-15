@@ -27,11 +27,15 @@ give a birth to next action, and so on.
 ### Usage
 
 ```js
-  // import proxy for particular stream library
+  // import proxy for particular stream library: 
+  // rx, rxjs, most, xtream
   import proxy from 'cycle-proxy/rx'  
   ...
       
-  const barValueProxy$ = proxy()  
+  const barValueProxy$ = proxy()
+  // proxy() can take compose function 
+  // that will be applied to transform imitated stream: 
+  // const barValueProxy$ = proxy(_ => _.startWith(0))
   const foo = Foo({value$, DOM})
   const bar = Bar({HTTP, prop$: foo.prop$})
   

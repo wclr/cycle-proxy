@@ -39,6 +39,9 @@ const testProcessed = (t, dispose, processed, processedEmitted) => {
 }
 const items = [1, 2, 3, 2, 5, 6, 7, 8, 9, 10]
 
+const passQueue = (item, queue) => {
+  return (queue.indexOf(item) < 0) ? item : null
+}
 
 const toggleInQueue = (queue, item) => {
   var index = queue.indexOf(item)
@@ -51,15 +54,16 @@ const makeRxTest = (name, Rx, proxy) => {
   let O = Rx.Observable
   let processed = []
   let processedEmitted = []
+  let cacheMethod = name === 'rx' ? 'shareReplay' : 'cache'
   test(`cyclic proxy (${name})`, (t) => {
     let item$ = O.interval(emitInterval)
       .map(i => items[i] || -1)
 
     let queueMimic$ = proxy()
 
-    let passed$ = item$.withLatestFrom(queueMimic$.startWith([]), (item, queue) => {
-      return (queue.indexOf(item) < 0) ? item : null
-    }).filter(_ => _)
+    let passed$ = item$
+      .withLatestFrom(queueMimic$.startWith([]), passQueue)
+      .filter(_ => _)
 
     //let catchPossibleLeak = (x) => processedEmitted.push(x)
     let catchPossibleLeak = (x) => processedEmitted.push(x)
@@ -71,7 +75,7 @@ const makeRxTest = (name, Rx, proxy) => {
       .share()
 
     let queue$ = O.merge(passed$, processed$).scan(toggleInQueue, [])
-      .share()
+      [cacheMethod](1)
       .let(queueMimic$.proxy)
 
     let sub = O.merge(processed$, queue$.skip())
@@ -95,10 +99,6 @@ test('xstream - imitate', (t) => {
     .map(i => items[i] || -1)
 
   let toggleMimic$ = xs.create()
-
-  const passQueue = (item, queue) => {
-    return (queue.indexOf(item) < 0) ? item : null
-  }
 
   let queue$ = toggleMimic$
     .fold(toggleInQueue, [])

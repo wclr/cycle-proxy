@@ -17,7 +17,7 @@ export const makeProxy = (adapter) => {
       const subscribeToTarget = () => {
         if (proxyDispose) return
         proxyDispose = adapter.streamSubscribe(
-          adapter.remember(targetStream), subject.observer
+          targetStream, subject.observer
         )
       }
       if (target){
