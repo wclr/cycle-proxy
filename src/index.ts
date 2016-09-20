@@ -1,14 +1,19 @@
-export const makeProxy = (adapter) => {
-  if (!adapter || typeof adapter.adapt !== 'function'){
-    throw new Error('First parameter should pass a stream adapter')
-  }
-  return (composeFn = _ => _) => {
+import { StreamAdapter, Observer} from '@cycle/base'
+
+export type Stream = any
+
+export interface ProxyFn {
+  (originalStream: Stream) : Stream 
+} 
+
+export const makeProxy = (adapter: StreamAdapter) => {  
+  return (composeFn = (_: any) => _): Stream & { proxy: ProxyFn } => {
     const subject = adapter.makeSubject()
-    let proxyDispose
-    let targetStream
+    let proxyDispose: any
+    let targetStream: Stream
     let refs = 0
-    const proxyStream = subject.stream
-    proxyStream.proxy = (target) => {
+    const proxyStream = subject.stream    
+    proxyStream.proxy = (target: Stream) => {
       if (!target || !adapter.isValidStream(target)){
         throw new Error('You should provide a valid target stream to proxy')
       }
@@ -17,9 +22,10 @@ export const makeProxy = (adapter) => {
       }
       targetStream = composeFn(target)
       let refs = 0
+      
       return adapter.adapt({}, (_, observer) => {
-        let dispose = adapter.streamSubscribe(target, observer)
-        if (refs++ === 0){
+        let dispose = adapter.streamSubscribe(target, observer)        
+        if (refs++ === 0) {          
           proxyDispose = adapter.streamSubscribe(
             targetStream, subject.observer
           )

@@ -1,3 +1,17 @@
-.idea
-_*
+# Editor-specific
+
+# Installed libs
 node_modules
+typings
+
+# Generated
+*.js
+*.js.map
+*.d.ts
+tsconfig.json
+
+!src/**/*
+
+# Misc
+npm-debug.log
+_*

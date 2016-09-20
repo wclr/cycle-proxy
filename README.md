@@ -1,6 +1,6 @@
 # cycle-proxy
 
-> Create imitating proxy in your [cycle.js](http://cycle.js.org) apps.
+> Create imitating proxy and circular dataflows in your [cycle.js](http://cycle.js.org) apps.
 
 This helper allows to create a stream which can **attach to other stream**
 and emmit target stream values. Like [`imitate`](https://github.com/staltz/xstream#imitate) 
@@ -75,5 +75,60 @@ If you are using `xstream` it is recommended to use `imitate`. But
 this `proxy` also supports attaching to any kind of streams 
 (even `MemoryStreams` of `xstream`, which `imitate` does not support).
 
+### Circulate
+
+There is also useful `circulate` utitlity helper included 
+using which you can make circular dataflows (without `proxy` API):
+
+```ts
+  
+  import proxy from 'cycle-proxy/circulate/rx'  
+  ...
+      
+  // `value$` here is a  prop that should be taken 
+  // from dataflow sinks and passed as dataflow source
+  let pow2 = circulate<number>('value$') 
+    ((value$) => {
+      return {
+        value$: target$.map(x => x * 2)
+          .startWith(1)
+          .delay(1000)
+      }
+    })  
+
+    // target$ should have subscription to start
+    pow2.value$.subscribe(...)
+```
+
+Simpliest circular dataflow with single sinking stream:
+
+```ts
+  let pow2$ = circulate<number>((pow2$) => 
+    pow2$.map(x => x * 2)
+      .startWith(1)
+      .delay(1)
+  )
+```
+
+More advanced example, kind of sequential load:
+```js
+  import proxy from 'cycle-proxy/circulate/rxjs'  
+  ...
+      
+  let itemsToLoad = [....] 
+  let queuedLoad = circulate(
+    (({queue$}) => {
+
+      let result$ = Loader(itemToLoad$: queue$)
+
+      return {
+        result$,
+        queue$: result$.startWith(null)
+          .map(((_, i) => itemsToLoad[i + 1])          
+      }            
+    }, {queue$: true}
+  )      
+```
+
 ## Licence
-ISC
+ISC.
