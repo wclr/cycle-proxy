@@ -1,48 +1,58 @@
-export type Dataflow<Sinks> = (...rest: any[]) => Sinks;
+import { StreamAdapter, Observer } from '@cycle/base'
 
-export type Fields = string | string[] | { [index: string]: true } 
+export type Dataflow<So, Si> = (sources: So, ...rest: any[]) => Si
 
-export const makeCirculate = (proxy: any) =>
-  function circulate(...args: any[]): any  {
-    let dataflow: Dataflow<any>
-    let fields: any = args.filter(_ => _)             
-    if (typeof fields[0] === 'function') {
-      dataflow = fields.shift()
-    } else {
-      return (dataflow: Dataflow<any>) => circulate(dataflow, ...fields)
-    }
-    
-    if (fields.length === 0) {
-      fields = null
-    } else if (fields.length === 1 && typeof fields[0] === 'object') {
-      fields = fields[0]
-    }
-            
-    let sources: any = {}
-    let sourcesArray: any[] = []
-    if (fields) {
-      if (Array.isArray(fields)) {
-        fields.forEach((key) => {
-          sources[key] = proxy()
-          sourcesArray.push(sources[key])          
-        })
-      } else {
-        for (let key in fields) {
-          sources[key] = proxy()
+export type Fields = string | string[] | { [index: string]: true }
+
+export const makeCirculate = (proxy: any, adapter: StreamAdapter) =>
+  function circulate<So, Si>(dataflow: any, circularName: string = 'circular$'):
+    Dataflow<So, Si> {
+    return function (sources: any, ...rest: any[]) {
+      let circular$ = sources[circularName] = proxy()
+      let sinks = dataflow(sources, ...rest) as any
+
+      const proxyStreams: any = {}
+      const proxiedSinks: any = {}
+
+      const disposeCircular = adapter.streamSubscribe(
+        circular$.proxy(sinks[circularName]), {
+          next: () => { }, error: () => { }, complete: () => { }
         }
-      }      
-    } else {
-      sources = proxy()
-    }
-    let sinks: any = sourcesArray.length ? dataflow(...sourcesArray) : dataflow(sources)
-    if (fields) {
-      let proxiedSinks: any = {}
-      for (let key in sinks) {
-        proxiedSinks[key] = sources[key] ? sources[key].proxy(sinks[key]) : sinks[key]
+      )
+
+      const checkAllDisposed = () => {
+        let disposed = true
+        for (const key in proxyStreams) {
+          if (proxyStreams[key].__proxyRefs) {
+            disposed = false
+          }
+        }
+        if (disposed) {
+          disposeCircular()
+        }
+      }
+
+      for (const key in sinks) {
+        // TODO: decide if we we need 
+        // to remove circular$ stream from sinks 
+        //if (key === circularName) return
+        const sink = sinks[key]
+        if (sink && adapter.isValidStream(sink)) {
+          proxyStreams[key] = proxy()
+          proxiedSinks[key] = proxyStreams[key].proxy(sink)
+          proxyStreams[key].__onProxyDispose = checkAllDisposed
+          // TODO: probably can use proxy completition
+          // if proxy can be subscribed once?
+          // adapter.streamSubscribe(proxyStreams[key], {
+          //   next: () => { },
+          //   error: () => { },
+          //   complete: () => { console.log(key + 'completed') }
+          // })
+        } else {
+          proxiedSinks[key] = sink
+        }
       }
       return proxiedSinks
-    } else {
-      return sources.proxy(sinks)
     }
   }
 

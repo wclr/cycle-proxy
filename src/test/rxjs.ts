@@ -83,78 +83,33 @@ test('rxjs: proxy$ should stop emitting when proxied$ unsubscribed', (t) => {
   }, 10)
 })
 
-
-test('rxjs: circulate (no properties)', (t) => {
-  let target$ = circulate<number>((target$) => {
-    return target$.map(x => x * 2)
-      .startWith(1)
-      .delay(1)
-  })
-  let results: number[] = []
-  let sub = target$.subscribe((x) => {
-    results.push(x)
-    if (results.length === 4) {
-      sub.unsubscribe()
-      t.deepEqual(results, [1, 2, 4, 8], 'results ok')
-      t.end()
-    }
-  })
-})
-
-test('rxjs: circulate (properties: ...string[])', (t) => {
-  let circ = circulate((target$: O<number>) => {
-    return {
-      target$: target$.map(x => x * 2)
+test('rxjs: circulate', (t) => {
+  type Sources = { }
+  type Circular = {circular$: O<number> }
+  type Sinks = { target$: O<number> } & Circular  
+  
+  let emitted = 0
+  const Dataflow = ({ circular$}: Sources & Circular): Sinks & Circular => {
+    return {            
+      circular$: circular$.map(x => x * 2)
         .startWith(1)
-        .delay(1)
+        .delay(10).do(() => emitted++),
+      target$: circular$.map(x => x*10)
     }
-  }, 'target$')
+  }
+  
+  let circ = circulate<Sources, Sinks>(Dataflow)
   let results: number[] = []
-  let sub = circ.target$.subscribe((x) => {
+  let sub = circ({}).target$.subscribe((x) => {
     results.push(x)
     if (results.length === 4) {
       sub.unsubscribe()
-      t.deepEqual(results, [1, 2, 4, 8], 'results ok')
-      t.end()
-    }
-  })
-})
-
-test('rxjs: circulate (properties: {...})', (t) => {
-  let circ = circulate(({target$}: { target$: O<number> }) => {
-    return {
-      target$: target$.map(x => x * 2)
-        .startWith(1)
-        .delay(1)
-    }
-  }, { target$: true })
-  let results: number[] = []
-  let sub = circ.target$.subscribe((x) => {
-    results.push(x)
-    if (results.length === 4) {
-      sub.unsubscribe()
-      t.deepEqual(results, [1, 2, 4, 8], 'results ok')
-      t.end()
-    }
-  })
-})
-
-test('rxjs: circulate (factory)', (t) => {
-  let circ = circulate<number>('target$')
-    ((target$) => {
-      return {
-        target$: target$.map(x => x * 2)
-          .startWith(1)
-          .delay(1)
-      }
-    })
-  let results: number[] = []
-  let sub = circ.target$.subscribe((x) => {
-    results.push(x)
-    if (results.length === 4) {
-      sub.unsubscribe()
-      t.deepEqual(results, [1, 2, 4, 8], 'results ok')
-      t.end()
+      t.deepEqual(results, [10, 20, 40, 80], 'results ok')
+      const emittedFinal = emitted
+      setTimeout(() => {
+        t.ok(emittedFinal === emitted, 'no leak')
+        t.end()
+      }, 100)
     }
   })
 })

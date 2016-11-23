@@ -1,6 +1,6 @@
 {
   "name": "cycle-proxy",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Create streams that mimic (proxy) other.",
   "author": "whitecolor",
   "repository": "github:whitecolor/cycle-proxy",
@@ -15,10 +15,13 @@
   "scripts": {
     "clean": "rimraf *.js *.js.map *.d.ts",
     "build": "node ../make-tsconfig && ../node_modules/.bin/tsc --outDir .",
-    "build:watch": "npm run build -- -w",    
-    "test": "node -r source-map-support/register test/test.js",    
+    "build:watch": "npm run build -- -w",
+    "test": "node -r source-map-support/register test/test.js",
     "test:watch": "node-dev --respawn -r source-map-support/register test/test.js",
     "prepublish": "npm run clean & npm run build && npm run test",
     "vmd-readme": "vmd README.md"
-  }  
+  },
+  "devDependencies": {
+    "typescript": "^2.2.0-dev.20161121"
+  }
 }

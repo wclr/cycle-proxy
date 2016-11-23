@@ -36,7 +36,7 @@ give a birth to next action, and so on.
   // proxy() can take compose function 
   // that will be applied to transform imitated stream: 
   // const barValueProxy$ = proxy(_ => _.startWith(0))
-  const foo = Foo({value$, DOM})
+  const foo = Foo({value$: barValueProxy$, DOM})
   const bar = Bar({HTTP, prop$: foo.prop$})
   
   bar.value$
@@ -78,57 +78,45 @@ this `proxy` also supports attaching to any kind of streams
 ### Circulate
 
 There is also useful `circulate` utitlity helper included 
-using which you can make circular dataflows (without `proxy` API):
+using which you can make circular dataflows (without explicit use of `proxy` API):
 
-```ts
+It allows you with ease to create circular state 
+in cycle.js application [with reducer patter](http://staltz.com/reducer-pattern-in-cyclejs.html):
+
+```ts  
+  import circulate from 'cycle-proxy/circulate/rxjs'  
+  ...  
+
+  let Main({DOM, state$}: Sources) => {
+
+    const reducer$ = merge(
+      of(() => ({count: 1})), // set initial state
+      DOM.select('add').map(({count}) => ({count: count + 1})),
+      DOM.select('.substruct').map(({count}) => ({count: count - 1}))
+    )
+    return {
+      DOM: state$.map(({count}) => div([
+        div('count:' + count),
+        button('.add', '+1'),
+        button('.add', '-1')
+      ])),
+      state$: reducer$
+        .scan((state, reducer) => reducer(state))
+    }
+  }  
   
-  import proxy from 'cycle-proxy/circulate/rx'  
-  ...
-      
-  // `value$` here is a  prop that should be taken 
-  // from dataflow sinks and passed as dataflow source
-  let pow2 = circulate<number>('value$') 
-    ((value$) => {
-      return {
-        value$: target$.map(x => x * 2)
-          .startWith(1)
-          .delay(1000)
-      }
-    })  
+  // `circulate` will connect sinks' state$  to sources' state$ stream
+  // so each value that will go to sink, you will see in the source
+  // `state$` is a name of circulated stream, default name is `circular$`  
+  let StatifiedMain = circulate(Main, 'state$')
 
-    // target$ should have subscription to start
-    pow2.value$.subscribe(...)
+  run(StatifiedMain, {
+    DOM: makeDOMDriver()
+  })
 ```
 
-Simpliest circular dataflow with single sinking stream:
-
-```ts
-  let pow2$ = circulate<number>((pow2$) => 
-    pow2$.map(x => x * 2)
-      .startWith(1)
-      .delay(1)
-  )
-```
-
-More advanced example, kind of sequential load:
-```js
-  import proxy from 'cycle-proxy/circulate/rxjs'  
-  ...
-      
-  let itemsToLoad = [....] 
-  let queuedLoad = circulate(
-    (({queue$}) => {
-
-      let result$ = Loader(itemToLoad$: queue$)
-
-      return {
-        result$,
-        queue$: result$.startWith(null)
-          .map(((_, i) => itemsToLoad[i + 1])          
-      }            
-    }, {queue$: true}
-  )      
-```
+NB! `circulate` is leak free. It will stop the curculating stream 
+when all the sinks of the dataflow will be unsubscribed.
 
 ## Licence
 ISC.

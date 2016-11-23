@@ -8,11 +8,11 @@ export interface ProxyFn {
 
 export const makeProxy = (adapter: StreamAdapter) => {  
   return (composeFn = (_: any) => _): Stream & { proxy: ProxyFn } => {
-    const subject = adapter.makeSubject()
+    const subject = adapter.makeSubject()    
     let proxyDispose: any
-    let targetStream: Stream
-    let refs = 0
-    const proxyStream = subject.stream    
+    let targetStream: Stream    
+    const proxyStream = subject.stream
+    const proxyObserver = subject.observer    
     proxyStream.proxy = (target: Stream) => {
       if (!target || !adapter.isValidStream(target)){
         throw new Error('You should provide a valid target stream to proxy')
@@ -21,19 +21,22 @@ export const makeProxy = (adapter: StreamAdapter) => {
         throw new Error('You may provide only one target stream to proxy')
       }
       targetStream = composeFn(target)
-      let refs = 0
-      
-      return adapter.adapt({}, (_, observer) => {
+      proxyStream.__proxyRefs = 0      
+      return adapter.adapt({}, (_: any, observer: Observer<any>) => {        
         let dispose = adapter.streamSubscribe(target, observer)        
-        if (refs++ === 0) {          
+        if (proxyStream.__proxyRefs++ === 0) {          
           proxyDispose = adapter.streamSubscribe(
-            targetStream, subject.observer
-          )
+            targetStream, proxyObserver
+          )          
         }
         return () => {
           dispose()
-          if (--refs === 0){
+          if (--proxyStream.__proxyRefs === 0) {
             proxyDispose()
+            proxyObserver.complete()
+            if (proxyStream.__onProxyDispose) {
+              proxyStream.__onProxyDispose()
+            }
           }
         }
       })
